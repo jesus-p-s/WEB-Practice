@@ -16,32 +16,22 @@ pipeline {
             }
         }
 
-        stage('Prepare web files') {
-            steps {
-                echo 'Copying web files to Docker volume...'
-                // Crear el volumen si no existe
-                sh 'docker volume create webdata || true'
-                // Limpiar contenido anterior
-                sh 'docker run --rm -v webdata:/data alpine sh -c "rm -rf /data/*"'
-                // Copiar archivos del workspace al volumen
-                sh 'docker run --rm -v webdata:/data -v ${WORKSPACE}/web:/src alpine sh -c "cp -r /src/. /data/"'
-            }
-        }
-
         stage('Recreate Apache container') {
             steps {
                 echo 'Dropping and recreating Apache container...'
                 // Eliminar contenedor si existe
                 sh 'docker rm -f apache1 || true'
-                // Crear nuevo contenedor Apache con el volumen correcto
-                sh '''
-                docker run -dit \
-                  --name apache1 \
-                  -p 9001:80 \
-                  -v webdata:/usr/local/apache2/htdocs \
-                  httpd
-                '''
-                // Ajustar permisos
+                // Crear contenedor Apache vacío
+                sh 'docker run -dit --name apache1 -p 9001:80 httpd'
+            }
+        }
+
+        stage('Copy web application into container') {
+            steps {
+                echo 'Copying web files into Apache container...'
+                // Copiar los archivos directamente al contenedor
+                sh 'docker cp ${WORKSPACE}/web/. apache1:/usr/local/apache2/htdocs/'
+                // Ajustar permisos dentro del contenedor
                 sh 'docker exec apache1 chown -R www-data:www-data /usr/local/apache2/htdocs'
                 sh 'docker exec apache1 chmod -R 755 /usr/local/apache2/htdocs'
             }
@@ -50,7 +40,6 @@ pipeline {
         stage('Check web app') {
             steps {
                 echo 'Testing the web app...'
-                // Esperar un poco para que Apache arranque
                 sh 'sleep 5'
                 sh 'curl -f http://host.docker.internal:9001'
             }
