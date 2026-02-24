@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     stages {
-
         stage('Input data') {
             input {
                 message 'Enter deployment info'
@@ -30,7 +29,7 @@ pipeline {
             steps {
                 echo 'Copying web files into Apache container...'
                 // Copiar los archivos directamente al contenedor
-                sh 'docker cp ${WORKSPACE}/web/. apache1:/usr/local/apache2/htdocs/'
+                sh "docker cp ${WORKSPACE}/web/. apache1:/usr/local/apache2/htdocs/"
                 // Ajustar permisos dentro del contenedor
                 sh 'docker exec apache1 chown -R www-data:www-data /usr/local/apache2/htdocs'
                 sh 'docker exec apache1 chmod -R 755 /usr/local/apache2/htdocs'
@@ -43,6 +42,19 @@ pipeline {
                 sh 'sleep 5'
                 sh 'curl -f http://host.docker.internal:9001'
             }
+        }
+    }
+
+    post {
+        cleanup {
+            echo 'Cleaning up workspace...'
+            cleanWs()
+        }
+        success {
+            echo 'Deployment completed successfully!'
+        }
+        failure {
+            echo 'Deployment failed!'
         }
     }
 }
