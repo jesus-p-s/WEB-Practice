@@ -1,26 +1,11 @@
 pipeline {
     agent any
 
-    environment {
-        WEB_VOLUME = "webdata"
-        APACHE_CONTAINER = "apache1"
-        APACHE_PORT = "9001"
-    }
-
     stages {
-        stage('Create Docker volume') {
-            steps {
-                echo "Creating shared Docker volume for web files..."
-                sh """
-                docker volume inspect ${WEB_VOLUME} >/dev/null 2>&1 || \
-                docker volume create ${WEB_VOLUME}
-                """
-            }
-        }
 
-        stage('Input deployment data') {
+        stage('Input data') {
             input {
-                message 'Enter deployment data'
+                message 'Enter deployment info'
                 parameters {
                     string(name:'AUTHOR', defaultValue: 'Sergio', description: 'Author of the deployment')
                     string(name:'ENVIRONMENT', defaultValue: 'Development', description: 'Environment to deploy')
@@ -31,37 +16,43 @@ pipeline {
             }
         }
 
-        stage('Copy web application') {
+        stage('Prepare web files') {
             steps {
-                echo 'Copying web application to Docker volume...'
-                sh """
-                docker run --rm -v ${WEB_VOLUME}:/data alpine sh -c 'rm -rf /data/*'
-                docker run --rm -v ${WEB_VOLUME}:/data -v \$(pwd)/web:/src alpine sh -c 'cp -r /src/. /data/'
-                """
+                echo 'Copying web files to Docker volume...'
+                // Crear el volumen si no existe
+                sh 'docker volume create webdata || true'
+                // Limpiar contenido anterior
+                sh 'docker run --rm -v webdata:/data alpine sh -c "rm -rf /data/*"'
+                // Copiar archivos del workspace al volumen
+                sh 'docker run --rm -v webdata:/data -v ${WORKSPACE}/web:/src alpine sh -c "cp -r /src/. /data/"'
             }
         }
 
         stage('Recreate Apache container') {
             steps {
                 echo 'Dropping and recreating Apache container...'
-                sh """
-                docker rm -f ${APACHE_CONTAINER} || true
+                // Eliminar contenedor si existe
+                sh 'docker rm -f apache1 || true'
+                // Crear nuevo contenedor Apache con el volumen correcto
+                sh '''
                 docker run -dit \
-                    --name ${APACHE_CONTAINER} \
-                    -p ${APACHE_PORT}:80 \
-                    -v ${WEB_VOLUME}:/usr/local/apache2/htdocs \
-                    httpd
-                docker exec ${APACHE_CONTAINER} chown -R www-data:www-data /usr/local/apache2/htdocs
-                docker exec ${APACHE_CONTAINER} chmod -R 755 /usr/local/apache2/htdocs
-                """
+                  --name apache1 \
+                  -p 9001:80 \
+                  -v webdata:/usr/local/apache2/htdocs \
+                  httpd
+                '''
+                // Ajustar permisos
+                sh 'docker exec apache1 chown -R www-data:www-data /usr/local/apache2/htdocs'
+                sh 'docker exec apache1 chmod -R 755 /usr/local/apache2/htdocs'
             }
         }
 
         stage('Check web app') {
             steps {
                 echo 'Testing the web app...'
+                // Esperar un poco para que Apache arranque
                 sh 'sleep 5'
-                sh "curl -f http://host.docker.internal:${APACHE_PORT}"
+                sh 'curl -f http://host.docker.internal:9001'
             }
         }
     }
