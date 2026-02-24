@@ -48,7 +48,7 @@ pipeline {
                 echo 'Testing the web app...'
                 // Esperar un poco para que Apache arranque
                 sh 'sleep 5'
-                sh 'curl -f http://host.docker.internal:9000'
+                sh 'curl -f http://host.docker.internal:9001'
             }
         }
     }
